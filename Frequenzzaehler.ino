@@ -29,6 +29,9 @@ unsigned long timestamp1 = 0; // first timestamp
 unsigned long timestamp2 = 0; // second timestamp
 // action controlling
 int actioncounter = 0; // counts for timing actions
+// frequncy counter
+double freqcounter = 0;
+
 
 // initialize the library with the numbers of the interface pins
 /*  The LCD circruit
@@ -97,27 +100,24 @@ void loop()
     // no signal
     lcd.print(" ");
     }  
-  // calculate result
+  // calculate result of period
   period = double(timestamp2 - timestamp1); // double length of the pulse
+  // refresh display cycle time 100mS
+  // and measuring cycle
+  // first reset counter
+  freqcounter = 0;
+  // wait 100mS
+  delay (100);
+  // calculate frequency from counter
+  frequency = freqcounter / 100;
   // to avoid division by Zero, check first ...
-  if (period != 0)
+  // calculate frequency from period if bigger than 999µS
+  if (period > 999)
     {
+    // in this case, frequnency measuring will be overwritten
     frequency = 1000 / period; // calculate the frequency
     }
-  else
-    {
-    frequency = 0; // Zero means no frequncy
-    }
-  // set cursor to second line and display result
-  lcd.setCursor(0, 0);
-  lcd.print(period,0);
-  lcd.print("uS     ");
-  lcd.setCursor(0, 1);
-  lcd.print(frequency,3);
-  lcd.print("kHz    ");
-  // refresh display cycle time 100mS
-  delay (100);
-  // counts loop
+  // counts loops
   ++actioncounter;
   // every 10 seconds action
   if (actioncounter > 100)
@@ -125,6 +125,13 @@ void loop()
     actioncounter = 0; // reset counter
     sendlogdata(); // send data
     }
+  // set cursor to second line and display results
+  lcd.setCursor(0, 0);
+  lcd.print(period,0);
+  lcd.print("uS     ");
+  lcd.setCursor(0, 1);
+  lcd.print(frequency,3);
+  lcd.print("kHz    ");
   }
 
 /************************************
@@ -135,7 +142,9 @@ void measure()
   // shift last time
   timestamp1 = timestamp2; 
   // new time
-  timestamp2 = micros(); 
+  timestamp2 = micros();
+  // frequency counter
+  ++freqcounter;
   }
     
 /************************************
