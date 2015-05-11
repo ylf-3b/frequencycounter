@@ -19,19 +19,22 @@ const char softvers[] = "Frequenzzaehler ";
 // global variables
 int frequencestate = HIGH; // measuring input signal 
 int contrastValue = 0; // display contrast level
+
+
 // *** notice, battery not used yet ***
 int lowbattery = 611; // level when battery is low Voltage=AnalogIn*0.01014
 // measuring and calculate
-double period = 0; //
-double frequency = 0; //
+double period = 0; // in µS
+double frequency = 0; // in Hz
 // timestamps for measuring
 unsigned long timestamp1 = 0; // first timestamp
 unsigned long timestamp2 = 0; // second timestamp
 // action controlling
 int actioncounter = 0; // counts for timing actions
 // frequncy counter
-double freqcounter = 0;
-
+int freqcounter = 0;
+boolean highfrequency = true; // default we start with highfrequency measuring mode
+double prescaler = 10; // prescaler factor
 
 // initialize the library with the numbers of the interface pins
 /*  The LCD circruit
@@ -100,42 +103,97 @@ void loop()
     // no signal
     lcd.print(" ");
     }  
-  // calculate result of period
-  period = double(timestamp2 - timestamp1); // double length of the pulse
-  // refresh display cycle time 100mS
-  // and measuring cycle
+  // set cursor to measure mode indication
+  lcd.setCursor(14, 1);
+  if (highfrequency == true)
+      {
+      lcd.print("HF");
+      }
+    else
+      {
+      lcd.print("LF");
+      }
+      
+  // measuring handling 
   // first reset counter
   freqcounter = 0;
-  // wait 100mS
-  delay (100);
+  // different handling at high or low frequency
+  if (highfrequency == true)
+    {
+    // high frequency measuring mode
+    // activate interrupt for high frequency measuring
+    attachInterrupt(1, hfcount, FALLING);
+    // wait 100mS measuring cycle
+    delay (100);
+    // deactivate interrupt and stop measuring
+    detachInterrupt(1);
+    // calculate period from frequency measuring (period in µS)
+    // measure cycle time 100000µS divided by counts
+    period = 100000 / double(freqcounter);     
+    }
+  else
+    {
+    // low frequency measuring in normal mode    
+    // wait 100mS measuring cycle
+    delay (100);
+    // calculate result of period measurement
+    period = double(timestamp2 - timestamp1);
+    }
+  
   // calculate frequency from counter
-  frequency = freqcounter / 100;
-  // to avoid division by Zero, check first ...
-  // calculate frequency from period if bigger than 999µS
+  frequency = double(freqcounter) * 10;
+  
+  
+  // calculate correct measurements with prescaler use
+  frequency = frequency * prescaler;
+  period = period / prescaler;
+    
+  // on lower frequencys, calculate frequency from period if bigger than 999µS
   if (period > 999)
     {
-    // in this case, frequnency measuring will be overwritten
-    frequency = 1000 / period; // calculate the frequency
+    // in this case, frequnency measuring will be overwritten by calculation
+    frequency = 1000000 / period; // calculate the frequency from period
     }
-  // counts loops
+    
+  // counts loops for separate periodic actions
   ++actioncounter;
-  // every 10 seconds action
-  if (actioncounter > 100)
+  // every 60 seconds action
+  if (actioncounter > 600)
     {
     actioncounter = 0; // reset counter
-    sendlogdata(); // send data
+    sendlogdata(); // send measuring data
     }
+  
   // set cursor to second line and display results
   lcd.setCursor(0, 0);
-  lcd.print(period,0);
-  lcd.print("uS     ");
+  lcd.print(period,3);
+  lcd.print("uS   ");
   lcd.setCursor(0, 1);
   lcd.print(frequency,3);
-  lcd.print("kHz    ");
+  lcd.print("Hz  ");
+  
+  // decide which measuring mode will we usefull
+  // don't forget the prescaler 
+  if (frequency / prescaler > 25000 && highfrequency == false)
+    {
+    // at frequencys above 25kHz we will use other measuring mode
+    highfrequency = true; // set flag for high frequency measuring mode
+    // deactivate interrupt for measuring
+    detachInterrupt(1);    
+    }
+  if (frequency / prescaler < 20000 && highfrequency == true)
+    {
+    // at frequencys less 20kHz we will use other measuring mode
+    highfrequency = false; // reset flag for high frequency measuring mode
+    // activate interrupt for measuring
+    attachInterrupt(1, measure, FALLING);    
+    }
+  
+  // end of main loop
   }
 
 /************************************
-       measure interrupt routine
+  normal measure interrupt routine
 ************************************/    
 void measure()
   {
@@ -146,6 +204,16 @@ void measure()
   // frequency counter
   ++freqcounter;
   }
+
+/*******************************************
+  high frequency measure interrupt routine
+*******************************************/    
+void hfcount()
+  {
+  // frequency counter
+  ++freqcounter;
+  }
+
     
 /************************************
     send data for logging routine
@@ -153,7 +221,7 @@ void measure()
 void sendlogdata()
   {
   Serial.print("Log:");
-  Serial.print(period,0);
+  Serial.print(period,3);
   Serial.print(",");
   Serial.print(frequency,3);
   Serial.print("\n");
